@@ -965,8 +965,8 @@
        ========================================================================== */
     const CONFIG = {
       TOTAL_LAPS: 3,
-      TRACK_WIDTH: 112,       // Authentic scale: fits ~3.5 cars wide (car width is 26px)
-      HALF_WIDTH: 56,
+      TRACK_WIDTH: 220,       // Wide stadium circuit: fits ~8 cars wide for fast, open arcade racing
+      HALF_WIDTH: 110,
       WORLD_WIDTH: 3200,
       WORLD_HEIGHT: 2400,
       CAR_LENGTH: 52,
@@ -1384,30 +1384,21 @@
        ========================================================================== */
     class TrackSystem {
       constructor() {
-        // High quality closed circuit with 7 varied, readable corners:
-        // Main straight, Turn 1 sweeper, Turn 2 S-curve, Turn 3 fast right, Turn 4 hairpin,
-        // Back straight, Turn 5 double apex, Turn 6 sweeping bend, Turn 7 final left.
+        // Simple, wide, high-speed stadium speedway circuit with sweeping banked turns
         this.controlPoints = [
-          { x: 800,  y: 450 },   // Start / Finish Straight
-          { x: 1300, y: 450 },
-          { x: 1800, y: 450 },
-          { x: 2300, y: 550 },   // Turn 1 Sweeper Entry
-          { x: 2650, y: 850 },   // Turn 1 Apex
-          { x: 2600, y: 1250 },  // Turn 2 Left In
-          { x: 2200, y: 1450 },  // Turn 2 Apex
-          { x: 2250, y: 1800 },  // Turn 3 Right Entry
-          { x: 2650, y: 2050 },  // Turn 4 Hairpin Entry
-          { x: 2750, y: 2250 },  // Turn 4 Hairpin Apex
-          { x: 2450, y: 2450 },  // Hairpin Loop
-          { x: 1950, y: 2350 },  // Hairpin Exit
-          { x: 1500, y: 2150 },  // Back Straight
-          { x: 1050, y: 2150 },
-          { x: 650,  y: 2000 },  // Turn 5 Double Apex Entry
-          { x: 450,  y: 1650 },  // Turn 5 Mid Apex
-          { x: 680,  y: 1350 },  // Turn 6 Sweeper Entry
-          { x: 920,  y: 1050 },  // Turn 6 Apex
-          { x: 750,  y: 750 },   // Turn 7 Final Turn Entry
-          { x: 500,  y: 550 }    // Final Curve onto Straight
+          { x: 900,  y: 550 },   // Start / Finish Line
+          { x: 1500, y: 550 },   // Main Straight Mid
+          { x: 2100, y: 550 },   // Main Straight End
+          { x: 2600, y: 700 },   // Turn 1 Sweeper Entry
+          { x: 2800, y: 1100 },  // Turn 1 Apex
+          { x: 2750, y: 1500 },  // Turn 2 Apex
+          { x: 2350, y: 1850 },  // Turn 2 Exit onto Back Straight
+          { x: 1700, y: 1850 },  // Back Straight Mid
+          { x: 1100, y: 1850 },  // Back Straight End
+          { x: 650,  y: 1700 },  // Turn 3 Sweeper Entry
+          { x: 450,  y: 1300 },  // Turn 3 Apex
+          { x: 480,  y: 900 },   // Turn 4 Apex
+          { x: 680,  y: 650 }    // Turn 4 Exit onto Main Straight
         ];
 
         this.samples = [];
@@ -1526,10 +1517,10 @@
       generateBoostPads() {
         // Boost pads properly scaled & placed strictly along centerline and track tangent!
         const padSampleIndices = [
-          Math.floor(this.samples.length * 0.08), // Main Straight
-          Math.floor(this.samples.length * 0.32), // Chicane Exit
-          Math.floor(this.samples.length * 0.58), // Back Straight
-          Math.floor(this.samples.length * 0.88)  // Pre-Grid Straight
+          Math.floor(this.samples.length * 0.10), // Main Straight
+          Math.floor(this.samples.length * 0.35), // Turn 1/2 Sweeper Exit
+          Math.floor(this.samples.length * 0.60), // Back Straight
+          Math.floor(this.samples.length * 0.85)  // Turn 3/4 Sweeper Exit
         ];
 
         this.boostPads = padSampleIndices.map((idx, id) => {
@@ -1543,8 +1534,8 @@
             active: true,
             cooldownTimer: 0,
             cooldownMax: 6.5,
-            width: 32,
-            length: 75
+            width: 44,
+            length: 85
           };
         });
       }
@@ -1558,7 +1549,7 @@
         this.asphaltPatches = [];
 
         const sc = this.samples.length;
-        const railOffset = CONFIG.HALF_WIDTH + 18;
+        const railOffset = CONFIG.HALF_WIDTH + 24;
 
         // Procedural asphalt patches / seams (reference look)
         for (let i = 0; i < sc; i += 16) {
@@ -1568,8 +1559,8 @@
             x: s.x + s.normal.x * offset,
             y: s.y + s.normal.y * offset,
             angle: s.angle,
-            w: 36 + Math.abs(Math.sin(i * 2.1)) * 32,
-            h: 22 + Math.abs(Math.cos(i * 4.3)) * 18,
+            w: 48 + Math.abs(Math.sin(i * 2.1)) * 40,
+            h: 30 + Math.abs(Math.cos(i * 4.3)) * 24,
             dark: (i % 32 === 0)
           });
         }
@@ -1584,7 +1575,7 @@
           });
 
           // Direction warning chevron signs
-          if (s.curvature > 0.04 && i % 18 === 0) {
+          if (s.curvature > 0.025 && i % 18 === 0) {
             this.directionSigns.push({
               x: s.x + s.normal.x * (railOffset + 14),
               y: s.y + s.normal.y * (railOffset + 14),
@@ -1594,11 +1585,11 @@
           }
 
           // Apex tire stacks
-          if (s.curvature > 0.038 && i % 14 === 0) {
+          if (s.curvature > 0.025 && i % 14 === 0) {
             this.tireStacks.push({
-              x: s.x - s.normal.x * (CONFIG.HALF_WIDTH + 8),
-              y: s.y - s.normal.y * (CONFIG.HALF_WIDTH + 8),
-              radius: 9
+              x: s.x - s.normal.x * (CONFIG.HALF_WIDTH + 10),
+              y: s.y - s.normal.y * (CONFIG.HALF_WIDTH + 10),
+              radius: 10
             });
           }
         }
@@ -1606,11 +1597,11 @@
         // Grandstand near Start/Finish straight
         const startS = this.samples[0];
         this.grandstands.push({
-          x: startS.x + startS.normal.x * (CONFIG.HALF_WIDTH + 45),
-          y: startS.y + startS.normal.y * (CONFIG.HALF_WIDTH + 45),
+          x: startS.x + startS.normal.x * (CONFIG.HALF_WIDTH + 55),
+          y: startS.y + startS.normal.y * (CONFIG.HALF_WIDTH + 55),
           angle: startS.angle,
-          width: 140,
-          depth: 36
+          width: 160,
+          depth: 40
         });
 
         // Trees & Rocks strictly outside track buffer
@@ -1625,7 +1616,7 @@
           const trackInfo = this.getClosestPoint(rx, ry);
 
           // Strictly outside track and runoff
-          if (trackInfo.distance > CONFIG.HALF_WIDTH + 65) {
+          if (trackInfo.distance > CONFIG.HALF_WIDTH + 80) {
             const isRock = rng(i * 7.1) > 0.72;
             if (isRock) {
               const baseR = 14 + rng(i * 5.3) * 16;
@@ -1677,9 +1668,9 @@
         const dist = info.distance;
         if (dist <= CONFIG.HALF_WIDTH) {
           return { type: CONFIG.SURFACE.ROAD, info };
-        } else if (dist <= CONFIG.HALF_WIDTH + 14) {
+        } else if (dist <= CONFIG.HALF_WIDTH + 18) {
           return { type: CONFIG.SURFACE.CURB, info };
-        } else if (dist <= CONFIG.HALF_WIDTH + 80) {
+        } else if (dist <= CONFIG.HALF_WIDTH + 120) {
           return { type: CONFIG.SURFACE.GRASS, info };
         } else {
           return { type: CONFIG.SURFACE.BARRIER, info };
@@ -2485,17 +2476,17 @@
         const speed = Math.hypot(player.vx, player.vy);
         const speedRatio = MathUtils.clamp(speed / player.maxForwardSpeed, 0, 1.4);
 
-        let lookAheadDist = 110 + (speed / player.maxForwardSpeed) * 150;
-        let baseZoom = MathUtils.lerp(1.10, 0.82, speedRatio);
+        let lookAheadDist = 130 + (speed / player.maxForwardSpeed) * 180;
+        let baseZoom = MathUtils.lerp(0.85, 0.68, speedRatio);
         let rotSpeed = 3.2;
 
         if (this.mode === 1) { // Tight Chase
-          lookAheadDist = 60 + (speed / player.maxForwardSpeed) * 80;
-          baseZoom = MathUtils.lerp(1.30, 1.05, speedRatio);
+          lookAheadDist = 80 + (speed / player.maxForwardSpeed) * 100;
+          baseZoom = MathUtils.lerp(1.05, 0.85, speedRatio);
           rotSpeed = 4.5;
         } else if (this.mode === 2) { // Wide Overhead
-          lookAheadDist = 25;
-          baseZoom = 0.65;
+          lookAheadDist = 30;
+          baseZoom = 0.52;
           rotSpeed = 2.0;
         }
 
@@ -2639,10 +2630,10 @@
         const sc = this.track.samples.length;
         // Start Line is at sample 0. Grid boxes are before sample 0.
         const gridSlots = [
-          { sIdx: (sc - 4) % sc, lat: -18 }, // Pole / Player: Left lane, 80px behind line
-          { sIdx: (sc - 6) % sc, lat: 18 },  // 2nd / Blaze: Right lane, 120px behind line
-          { sIdx: (sc - 8) % sc, lat: -18 }, // 3rd / Apex: Left lane, 160px behind line
-          { sIdx: (sc - 10) % sc, lat: 18 }  // 4th / Viper: Right lane, 200px behind line
+          { sIdx: (sc - 4) % sc, lat: -36 }, // Pole / Player: Left lane, 80px behind line
+          { sIdx: (sc - 6) % sc, lat: 36 },  // 2nd / Nexon: Right lane, 120px behind line
+          { sIdx: (sc - 8) % sc, lat: -36 }, // 3rd / Fatal: Left lane, 160px behind line
+          { sIdx: (sc - 10) % sc, lat: 36 }  // 4th / Arnold: Right lane, 200px behind line
         ];
 
         const pSlot = gridSlots[0];
@@ -2669,7 +2660,7 @@
           x: a1Sample.x + a1Sample.normal.x * a1Slot.lat,
           y: a1Sample.y + a1Sample.normal.y * a1Slot.lat,
           angle: a1Sample.angle,
-          aiSkill: { targetSpeedFactor: 0.98, cornerCaution: 0.88, lookAheadDist: 190, laneOffset: 16 }
+          aiSkill: { targetSpeedFactor: 0.98, cornerCaution: 0.88, lookAheadDist: 210, laneOffset: 45 }
         });
 
         const a2Slot = gridSlots[2];
@@ -2683,7 +2674,7 @@
           x: a2Sample.x + a2Sample.normal.x * a2Slot.lat,
           y: a2Sample.y + a2Sample.normal.y * a2Slot.lat,
           angle: a2Sample.angle,
-          aiSkill: { targetSpeedFactor: 0.95, cornerCaution: 0.92, lookAheadDist: 180, laneOffset: -16 }
+          aiSkill: { targetSpeedFactor: 0.95, cornerCaution: 0.92, lookAheadDist: 200, laneOffset: -45 }
         });
 
         const a3Slot = gridSlots[3];
@@ -2697,7 +2688,7 @@
           x: a3Sample.x + a3Sample.normal.x * a3Slot.lat,
           y: a3Sample.y + a3Sample.normal.y * a3Slot.lat,
           angle: a3Sample.angle,
-          aiSkill: { targetSpeedFactor: 0.92, cornerCaution: 0.97, lookAheadDist: 170, laneOffset: 0 }
+          aiSkill: { targetSpeedFactor: 0.92, cornerCaution: 0.97, lookAheadDist: 190, laneOffset: 0 }
         });
 
         this.cars = [this.player, ai1, ai2, ai3];
@@ -3601,10 +3592,10 @@
         // 4 Starting Grid Boxes Painted on Road
         const sc = this.track.samples.length;
         const gridSlots = [
-          { sIdx: (sc - 4) % sc, lat: -18 },
-          { sIdx: (sc - 6) % sc, lat: 18 },
-          { sIdx: (sc - 8) % sc, lat: -18 },
-          { sIdx: (sc - 10) % sc, lat: 18 }
+          { sIdx: (sc - 4) % sc, lat: -36 },
+          { sIdx: (sc - 6) % sc, lat: 36 },
+          { sIdx: (sc - 8) % sc, lat: -36 },
+          { sIdx: (sc - 10) % sc, lat: 36 }
         ];
 
         ctx.strokeStyle = 'rgba(255, 255, 255, 0.7)';
