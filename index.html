@@ -2430,6 +2430,29 @@
           ctx.fillRect(-this.width / 2 - 1, -2, 2, 4);
         }
 
+        // Boost Jet Exhaust Flames (-X rear)
+        if (this.boostActive) {
+          ctx.save();
+          ctx.shadowColor = '#00f0ff';
+          ctx.shadowBlur = 12;
+          const flameL = 14 + Math.random() * 16;
+          ctx.fillStyle = '#00f0ff';
+          ctx.beginPath();
+          ctx.moveTo(-this.width / 2, -this.height / 2 + 4);
+          ctx.lineTo(-this.width / 2 - flameL, -this.height / 2 + 5);
+          ctx.lineTo(-this.width / 2, -this.height / 2 + 6);
+          ctx.closePath();
+          ctx.fill();
+
+          ctx.beginPath();
+          ctx.moveTo(-this.width / 2, this.height / 2 - 6);
+          ctx.lineTo(-this.width / 2 - flameL, this.height / 2 - 5);
+          ctx.lineTo(-this.width / 2, this.height / 2 - 4);
+          ctx.closePath();
+          ctx.fill();
+          ctx.restore();
+        }
+
         // 8. Player Indicator Marker (Rigidly attached inside vehicle's local frame)
         if (this.isPlayer) {
           ctx.save();
@@ -3441,7 +3464,7 @@
       }
 
       /* ==========================================================================
-         14. ANALOG SPEEDOMETER (TOP RIGHT GAUGE MATCHING REFERENCE SCREENSHOT)
+         14. ANALOG SPEEDOMETER (DYNAMIC JUICE: NEEDLE JITTER, SHIFT LIGHT & GLOW)
          ========================================================================== */
       renderAnalogSpeedometer() {
         const ctx = this.speedoCtx;
@@ -3455,9 +3478,10 @@
 
         const kmh = Math.round(Math.abs(this.player.speed) * 0.32);
         const maxKmh = 200;
+        const speedPct = MathUtils.clamp(kmh / maxKmh, 0, 1.05);
 
         ctx.save();
-        // 1. Outer Metallic Bezel Ring
+        // 1. Outer Metallic Bezel Ring with Beveled Highlights
         ctx.beginPath();
         ctx.arc(cx, cy, r + 8, 0, Math.PI * 2);
         ctx.fillStyle = '#0b0f17';
@@ -3472,7 +3496,7 @@
         ctx.strokeStyle = '#94a3b8';
         ctx.stroke();
 
-        // 2. Dark Dial Face with Subtle Radial Depth
+        // 2. Dynamic Radial Dial Face with Speed-Responsive Internal Glow
         const grad = ctx.createRadialGradient(cx - 20, cy - 20, 10, cx, cy, r);
         grad.addColorStop(0, '#1a1f2c');
         grad.addColorStop(1, '#0b0e14');
@@ -3480,6 +3504,18 @@
         ctx.beginPath();
         ctx.arc(cx, cy, r, 0, Math.PI * 2);
         ctx.fill();
+
+        // Speed-responsive ambient core glow (cyan -> amber -> intense crimson)
+        const glowColor = speedPct > 0.75 ? '#ef4444' : (speedPct > 0.45 ? '#f59e0b' : '#00d4ff');
+        const glowGrad = ctx.createRadialGradient(cx, cy, 10, cx, cy, r - 12);
+        glowGrad.addColorStop(0, glowColor);
+        glowGrad.addColorStop(1, 'transparent');
+        ctx.globalAlpha = 0.08 + speedPct * 0.24;
+        ctx.fillStyle = glowGrad;
+        ctx.beginPath();
+        ctx.arc(cx, cy, r - 12, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.globalAlpha = 1.0;
 
         const startA = Math.PI * 0.75;
         const endA = Math.PI * 2.25;
@@ -3536,11 +3572,36 @@
         ctx.fillStyle = '#ffffff';
         ctx.fillText(`${this.player.gear}`, cx, cy + 18);
 
-        // 6. Glowing Red Indicator Needle (Reference Screenshot)
-        const speedPct = MathUtils.clamp(kmh / maxKmh, 0, 1.05);
-        const needleAngle = startA + (endA - startA) * speedPct;
+        // 6. RPM Shift Light (Iconic Arcade / Motorsport Shift Beacon)
+        const shiftX = cx + 42;
+        const shiftY = cy - 42;
+        const inShiftZone = kmh >= 140 || this.player.rpm > 6600;
+        const shiftBlink = inShiftZone && (Math.floor(performance.now() * 0.02) % 2 === 0);
+
+        ctx.beginPath();
+        ctx.arc(shiftX, shiftY, 7, 0, Math.PI * 2);
+        ctx.fillStyle = shiftBlink ? '#ff0044' : (inShiftZone ? '#00f0ff' : '#1e293b');
+        ctx.fill();
+        ctx.lineWidth = 1.5;
+        ctx.strokeStyle = '#475569';
+        ctx.stroke();
+
+        if (shiftBlink) {
+          ctx.shadowColor = '#ff0044';
+          ctx.shadowBlur = 16;
+          ctx.beginPath();
+          ctx.arc(shiftX, shiftY, 5, 0, Math.PI * 2);
+          ctx.fillStyle = '#ffffff';
+          ctx.fill();
+          ctx.shadowBlur = 0;
+        }
+
+        // 7. Glowing Red Indicator Needle with Analog Inertia Flutter
+        const needleFlutter = (speedPct > 0.70) ? (Math.random() - 0.5) * 0.035 * speedPct : 0;
+        const needleAngle = startA + (endA - startA) * speedPct + needleFlutter;
+
         ctx.shadowColor = '#ff1f3d';
-        ctx.shadowBlur = 8;
+        ctx.shadowBlur = 10;
         ctx.lineWidth = 3.5;
         ctx.strokeStyle = '#ff1f3d';
         ctx.beginPath();
@@ -3561,6 +3622,9 @@
         ctx.restore();
       }
 
+      /* ==========================================================================
+         HYPERSPACE SPEED STREAKS & WARP EFFECTS
+         ========================================================================== */
       renderSpeedStreaks() {
         const ctx = this.fxCtx;
         const w = this.fxCanvas.width;
@@ -3568,24 +3632,47 @@
         ctx.clearRect(0, 0, w, h);
 
         const spd = Math.abs(this.player.speed);
-        if (spd < 480 && !this.player.boostActive) return;
+        if (spd < 340 && !this.player.boostActive) return;
 
-        const intensity = this.player.boostActive ? 1.0 : (spd - 480) / 220;
+        const maxSpd = this.player.maxForwardSpeed;
+        const intensity = this.player.boostActive ? 1.0 : MathUtils.clamp((spd - 340) / (maxSpd - 340 || 1), 0, 1);
+
         ctx.save();
-        ctx.globalAlpha = intensity * 0.45;
-        ctx.lineWidth = 2.5;
-        ctx.strokeStyle = this.player.boostActive ? '#00f0ff' : '#ffffff';
 
-        const cx = w / 2, cy = h / 2;
-        for (let i = 0; i < 28; i++) {
-          const a = Math.random() * Math.PI * 2;
-          const r1 = Math.min(w, h) * 0.38 + Math.random() * 80;
-          const r2 = r1 + 60 + Math.random() * 80;
+        // 1. Perspective Warp Speed Lines radiating from horizon vanishing point
+        const cx = w / 2;
+        const cy = (camera.mode === 0) ? Math.floor(h * 0.42) : h / 2;
+
+        const numStreaks = this.player.boostActive ? 38 : 24;
+        ctx.lineWidth = this.player.boostActive ? 3.0 : 1.8;
+        ctx.strokeStyle = this.player.boostActive ? '#00f0ff' : 'rgba(255, 255, 255, 0.85)';
+
+        for (let i = 0; i < numStreaks; i++) {
+          const a = (i / numStreaks) * Math.PI * 2 + (performance.now() * 0.001);
+          const minR = Math.min(w, h) * (this.player.boostActive ? 0.16 : 0.28) + (Math.sin(i * 7.3 + performance.now() * 0.012) * 35);
+          const maxR = minR + 80 + Math.random() * 160;
+
+          ctx.globalAlpha = intensity * (0.35 + Math.random() * 0.45);
           ctx.beginPath();
-          ctx.moveTo(cx + Math.cos(a) * r1, cy + Math.sin(a) * r1);
-          ctx.lineTo(cx + Math.cos(a) * r2, cy + Math.sin(a) * r2);
+          ctx.moveTo(cx + Math.cos(a) * minR, cy + Math.sin(a) * minR);
+          ctx.lineTo(cx + Math.cos(a) * maxR, cy + Math.sin(a) * maxR);
           ctx.stroke();
         }
+
+        // 2. Dynamic Radial Edge Vignette
+        const edgeVignette = ctx.createRadialGradient(cx, cy, Math.min(w, h) * 0.40, cx, cy, Math.max(w, h) * 0.88);
+        if (this.player.boostActive) {
+          edgeVignette.addColorStop(0, 'rgba(0, 240, 255, 0)');
+          edgeVignette.addColorStop(0.65, 'rgba(0, 180, 255, 0.12)');
+          edgeVignette.addColorStop(1, 'rgba(0, 60, 180, 0.38)');
+        } else {
+          edgeVignette.addColorStop(0, 'rgba(0, 0, 0, 0)');
+          edgeVignette.addColorStop(0.75, 'rgba(0, 0, 0, 0.18)');
+          edgeVignette.addColorStop(1, 'rgba(0, 0, 0, 0.48)');
+        }
+        ctx.fillStyle = edgeVignette;
+        ctx.fillRect(0, 0, w, h);
+
         ctx.restore();
       }
 
@@ -3884,22 +3971,53 @@
         ctx.fillStyle = skyGrad;
         ctx.fillRect(0, 0, w, horizonY);
 
-        // Sun disk in sunset sky
-        if (this.track.skyTheme === 'sunset') {
-          const sunX = w * 0.48 - (camAngle * 120) % (w * 1.5);
-          const sunY = horizonY - 45;
-          const sunGrad = ctx.createRadialGradient(sunX, sunY, 5, sunX, sunY, 70);
-          sunGrad.addColorStop(0, 'rgba(255, 255, 230, 0.95)');
-          sunGrad.addColorStop(0.25, 'rgba(254, 215, 170, 0.6)');
-          sunGrad.addColorStop(0.6, 'rgba(251, 146, 60, 0.2)');
-          sunGrad.addColorStop(1, 'rgba(234, 88, 12, 0)');
-          ctx.fillStyle = sunGrad;
+        // 1. Drifting Cirrus Clouds with Sunset Backlighting
+        const cloudT = performance.now() * 0.00008;
+        ctx.fillStyle = this.track.skyTheme === 'sunset' ? 'rgba(255, 235, 215, 0.18)' : 'rgba(255, 255, 255, 0.08)';
+        for (let c = 0; c < 5; c++) {
+          const cx = ((c * 0.24 + cloudT) % 1.25 - 0.12) * w;
+          const cy = horizonY * (0.18 + c * 0.14);
+          const cw = w * 0.38 + c * 45;
+          const ch = 16 + c * 5;
           ctx.beginPath();
-          ctx.arc(sunX, sunY, 70, 0, Math.PI * 2);
+          ctx.ellipse(cx, cy, cw * 0.5, ch * 0.5, 0, 0, Math.PI * 2);
           ctx.fill();
         }
 
-        // Distant Mesa / Mountain Silhouettes
+        // 2. Sun disk & Cinematic Multi-Element Lens Flare
+        if (this.track.skyTheme === 'sunset') {
+          const sunX = w * 0.48 - (camAngle * 120) % (w * 1.5);
+          const sunY = horizonY - 45;
+          const sunGrad = ctx.createRadialGradient(sunX, sunY, 6, sunX, sunY, 85);
+          sunGrad.addColorStop(0, 'rgba(255, 255, 240, 0.98)');
+          sunGrad.addColorStop(0.2, 'rgba(254, 215, 170, 0.7)');
+          sunGrad.addColorStop(0.55, 'rgba(251, 146, 60, 0.25)');
+          sunGrad.addColorStop(1, 'rgba(234, 88, 12, 0)');
+          ctx.fillStyle = sunGrad;
+          ctx.beginPath();
+          ctx.arc(sunX, sunY, 85, 0, Math.PI * 2);
+          ctx.fill();
+
+          // Optical Flare Rings
+          const midX = w / 2, midY = horizonY;
+          const dx = midX - sunX, dy = midY - sunY;
+          const flares = [
+            { dist: 0.35, size: 30, color: 'rgba(255, 220, 150, 0.20)' },
+            { dist: 0.65, size: 48, color: 'rgba(255, 160, 80, 0.15)' },
+            { dist: 0.90, size: 20, color: 'rgba(120, 220, 255, 0.18)' },
+            { dist: 1.25, size: 64, color: 'rgba(240, 100, 255, 0.12)' }
+          ];
+          flares.forEach(f => {
+            const fx = sunX + dx * f.dist;
+            const fy = sunY + dy * f.dist;
+            ctx.fillStyle = f.color;
+            ctx.beginPath();
+            ctx.arc(fx, fy, f.size, 0, Math.PI * 2);
+            ctx.fill();
+          });
+        }
+
+        // 3. Distant Mesa / Mountain Silhouettes
         const mtnOffset = -(camAngle * 180) % w;
         ctx.fillStyle = this.track.skyTheme === 'sunset' ? '#7c2d12' : '#0f172a';
         ctx.beginPath();
@@ -3917,7 +4035,7 @@
         ctx.closePath();
         ctx.fill();
 
-        // 3 Distinct Wind Turbines along the ridge
+        // 4. 3 Distinct Wind Turbines along the ridge
         const turbineTime = performance.now() * 0.0025;
         const turbinePositions = [
           { xFrac: 0.58, height: 48, rotorR: 26 },
@@ -3931,6 +4049,10 @@
           const ty = horizonY - 14;
           this.draw3DWindTurbine(ctx, tx, ty, tp.height, tp.rotorR, turbineTime + idx * 1.8);
         });
+
+        // 5. Desert Horizon Heat Shimmer Line
+        ctx.fillStyle = 'rgba(255, 180, 100, 0.15)';
+        ctx.fillRect(0, horizonY - 2, w, 4);
 
         ctx.restore();
       }
@@ -3966,6 +4088,7 @@
       }
 
       render3DNeonBarrier(ctx, b0, b1, t0, t1, neonColor, neonGlow, idx, side) {
+        // Dark metallic panel
         ctx.fillStyle = 'rgba(12, 18, 24, 0.92)';
         ctx.beginPath();
         ctx.moveTo(b0.sx, b0.sy);
@@ -3975,12 +4098,27 @@
         ctx.closePath();
         ctx.fill();
 
+        // Dynamic traveling wave pulse along the barrier wall
+        const flowT = performance.now() * 0.008;
+        const pulse = 0.72 + 0.28 * Math.sin(flowT * 4 - idx * 0.45);
+
+        // Glowing Neon Top Rail
         ctx.strokeStyle = neonColor;
-        ctx.lineWidth = Math.max(1.5, t0.scale * 2.2);
+        ctx.shadowColor = neonColor;
+        ctx.shadowBlur = 8 * pulse;
+        ctx.lineWidth = Math.max(1.8, t0.scale * 2.4);
         ctx.beginPath();
         ctx.moveTo(t0.sx, t0.sy);
         ctx.lineTo(t1.sx, t1.sy);
         ctx.stroke();
+
+        // Glowing Neon Bottom Rail
+        ctx.lineWidth = Math.max(1.2, b0.scale * 1.6);
+        ctx.beginPath();
+        ctx.moveTo(b0.sx, b0.sy);
+        ctx.lineTo(b1.sx, b1.sy);
+        ctx.stroke();
+        ctx.shadowBlur = 0;
 
         const midTopX = (t0.sx + t1.sx) / 2;
         const midTopY = (t0.sy + t1.sy) / 2;
@@ -3988,24 +4126,38 @@
         const midBotY = (b0.sy + b1.sy) / 2;
         const wallH = Math.hypot(midTopX - midBotX, midTopY - midBotY);
 
-        if (wallH > 8) {
+        if (wallH > 7) {
           ctx.save();
           ctx.strokeStyle = neonColor;
-          ctx.lineWidth = Math.max(1.8, t0.scale * 2.4);
+          ctx.shadowColor = neonColor;
+          ctx.shadowBlur = 6 * pulse;
+          ctx.lineWidth = Math.max(1.8, t0.scale * 2.5);
           ctx.lineCap = 'round';
           ctx.lineJoin = 'round';
+          ctx.globalAlpha = pulse;
 
           const cx = (midTopX + midBotX) / 2;
           const cy = (midTopY + midBotY) / 2;
           const chW = wallH * 0.42;
           const chH = wallH * 0.35;
 
-          const dir = 1;
+          // Forward-pointing Chevrons (>>>)
           ctx.beginPath();
-          ctx.moveTo(cx - chW * 0.5 * dir, cy - chH * 0.5);
-          ctx.lineTo(cx + chW * 0.5 * dir, cy);
-          ctx.lineTo(cx - chW * 0.5 * dir, cy + chH * 0.5);
+          ctx.moveTo(cx - chW * 0.5, cy - chH * 0.5);
+          ctx.lineTo(cx + chW * 0.5, cy);
+          ctx.lineTo(cx - chW * 0.5, cy + chH * 0.5);
           ctx.stroke();
+
+          // Double chevron for close wall segments
+          if (wallH > 22) {
+            const offset = chW * 0.55;
+            ctx.beginPath();
+            ctx.moveTo(cx - offset - chW * 0.5, cy - chH * 0.5);
+            ctx.lineTo(cx - offset + chW * 0.5, cy);
+            ctx.lineTo(cx - offset - chW * 0.5, cy + chH * 0.5);
+            ctx.stroke();
+          }
+
           ctx.restore();
         }
       }
@@ -4110,34 +4262,94 @@
         const carW = 210;
         const carH = 96;
 
-        const cx = w / 2;
-        const cy = h * 0.86;
-
-        let steerAngle = 0;
-        if (input.isSteerLeft) steerAngle = -0.05;
-        else if (input.isSteerRight) steerAngle = 0.05;
-
+        const isBraking = input.isBrake;
         const speedRatio = Math.abs(p.speed) / p.maxForwardSpeed;
-        const rumbleY = (Math.random() - 0.5) * speedRatio * 1.6;
+
+        // Progressive spring-damped body roll and squat/dive physics
+        const targetRoll = (input.isSteerLeft ? -0.065 : (input.isSteerRight ? 0.065 : 0)) * speedRatio;
+        const squatY = input.isAccelerate ? (speedRatio * 3.5) : (isBraking ? -5.5 : 0);
+        const rumbleY = (Math.random() - 0.5) * speedRatio * 1.8;
+
+        const cx = w / 2;
+        const cy = h * 0.86 + squatY;
 
         ctx.save();
         ctx.translate(cx, cy + rumbleY);
-        ctx.rotate(steerAngle);
+        ctx.rotate(targetRoll);
 
-        // 1. Contact Ground Shadow
+        // 1. Dynamic Forward Headlight Road Beam Cones casting into the screen
+        ctx.save();
+        const beamGrad = ctx.createLinearGradient(0, 10, 0, -carH * 2.2);
+        beamGrad.addColorStop(0, 'rgba(255, 255, 230, 0.22)');
+        beamGrad.addColorStop(0.5, 'rgba(255, 240, 200, 0.08)');
+        beamGrad.addColorStop(1, 'transparent');
+        ctx.fillStyle = beamGrad;
+        ctx.beginPath();
+        ctx.moveTo(-carW * 0.35, 8);
+        ctx.lineTo(-carW * 0.75, -carH * 2.2);
+        ctx.lineTo(carW * 0.75, -carH * 2.2);
+        ctx.lineTo(carW * 0.35, 8);
+        ctx.closePath();
+        ctx.fill();
+        ctx.restore();
+
+        // 2. Dynamic Volumetric Brake Light Glow onto the Asphalt
+        if (isBraking) {
+          ctx.save();
+          const brakeGlow = ctx.createRadialGradient(0, 15, 10, 0, 15, carW * 0.65);
+          brakeGlow.addColorStop(0, 'rgba(255, 0, 40, 0.45)');
+          brakeGlow.addColorStop(0.6, 'rgba(220, 20, 20, 0.15)');
+          brakeGlow.addColorStop(1, 'transparent');
+          ctx.fillStyle = brakeGlow;
+          ctx.beginPath();
+          ctx.ellipse(0, 20, carW * 0.70, 28, 0, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.restore();
+        }
+
+        // 3. Contact Ground Shadow
         ctx.fillStyle = 'rgba(0, 0, 0, 0.65)';
         ctx.beginPath();
         ctx.ellipse(0, 18, carW * 0.58, 22, 0, 0, Math.PI * 2);
         ctx.fill();
 
-        // 2. Wide Tires at outer lower edges
+        // 4. Wide Tires at outer lower edges
         ctx.fillStyle = '#090d16';
         ctx.beginPath();
         ctx.roundRect(-carW * 0.52, -2, 28, 24, 4);
         ctx.roundRect(carW * 0.52 - 28, -2, 28, 24, 4);
         ctx.fill();
 
-        // 3. Rear Car Body (Coupe)
+        // 5. 3D Tire Smoke & Ground Sparks on Drift or Hard Brake
+        const leftTireX = -carW * 0.44;
+        const rightTireX = carW * 0.44;
+        if ((p.isDrifting || (isBraking && p.speed > 80)) && Math.random() < 0.85) {
+          ctx.save();
+          const numPuffs = 4;
+          for (let pi = 0; pi < numPuffs; pi++) {
+            const tx = (pi % 2 === 0 ? leftTireX : rightTireX) + (Math.random() - 0.5) * 16;
+            const ty = 14 + Math.random() * 22;
+            const pr = 12 + Math.random() * 18;
+            ctx.fillStyle = 'rgba(240, 245, 255, 0.25)';
+            ctx.beginPath();
+            ctx.arc(tx, ty, pr, 0, Math.PI * 2);
+            ctx.fill();
+
+            // Ground Sparks
+            if (isBraking && Math.random() < 0.6) {
+              ctx.fillStyle = Math.random() > 0.4 ? '#ffea00' : '#ff7700';
+              ctx.shadowColor = '#ffea00';
+              ctx.shadowBlur = 6;
+              ctx.beginPath();
+              ctx.arc(tx + (Math.random() - 0.5) * 12, 16 + Math.random() * 8, 2.5, 0, Math.PI * 2);
+              ctx.fill();
+              ctx.shadowBlur = 0;
+            }
+          }
+          ctx.restore();
+        }
+
+        // 6. Rear Car Body (Sculpted Coupe)
         const bodyGrad = ctx.createLinearGradient(0, -carH, 0, 10);
         bodyGrad.addColorStop(0, p.color);
         bodyGrad.addColorStop(0.5, p.color);
@@ -4155,7 +4367,7 @@
         ctx.closePath();
         ctx.fill();
 
-        // 4. Rear Windshield Glass with Sunset Reflection
+        // 7. Rear Windshield Glass with Sunset Reflection
         const glassGrad = ctx.createLinearGradient(0, -carH * 0.85, 0, -carH * 0.5);
         glassGrad.addColorStop(0, '#fdba74');
         glassGrad.addColorStop(0.4, '#1e293b');
@@ -4169,7 +4381,7 @@
         ctx.closePath();
         ctx.fill();
 
-        // 5. Rear Wing Dual Stanchions & Aerodynamic Spoiler
+        // 8. Rear Wing Dual Stanchions & Aerodynamic Spoiler
         ctx.fillStyle = '#0f172a';
         ctx.fillRect(-carW * 0.22, -carH * 1.05, 8, 38);
         ctx.fillRect(carW * 0.22 - 8, -carH * 1.05, 8, 38);
@@ -4183,11 +4395,10 @@
         ctx.fillRect(-carW * 0.54, -carH * 1.16, 5, 24);
         ctx.fillRect(carW * 0.54 - 5, -carH * 1.16, 5, 24);
 
-        // 6. Sleek Dual Horizontal LED Taillights
-        const isBraking = input.isBrake;
+        // 9. Sleek Dual Horizontal LED Taillights with Intense Brake Bloom
         ctx.shadowColor = isBraking ? '#ff0033' : '#ef4444';
-        ctx.shadowBlur = isBraking ? 24 : 10;
-        ctx.fillStyle = isBraking ? '#ff3344' : '#dc2626';
+        ctx.shadowBlur = isBraking ? 32 : 12;
+        ctx.fillStyle = isBraking ? '#ff2244' : '#dc2626';
 
         ctx.beginPath();
         ctx.moveTo(-carW * 0.44, -carH * 0.44);
@@ -4207,7 +4418,7 @@
 
         ctx.shadowBlur = 0;
 
-        // 7. Center License Plate Frame
+        // 10. Center License Plate Frame
         ctx.fillStyle = '#ffffff';
         ctx.fillRect(-28, -carH * 0.36, 56, 18);
         ctx.strokeStyle = '#334155';
@@ -4219,7 +4430,7 @@
         ctx.textBaseline = 'middle';
         ctx.fillText('TURBO', 0, -carH * 0.36 + 9);
 
-        // 8. Aggressive Rear Diffuser
+        // 11. Aggressive Rear Diffuser & Aero Fins
         ctx.fillStyle = '#090d16';
         ctx.beginPath();
         ctx.roundRect(-carW * 0.38, -6, carW * 0.76, 20, 3);
@@ -4230,7 +4441,7 @@
           ctx.fillRect(fx - 2, -4, 4, 18);
         });
 
-        // 9. Twin Chrome Exhaust Pipes & Boost Flames
+        // 12. Twin Chrome Exhaust Pipes & Supersonic Multi-Stage Boost Jets
         const exY = 5;
         const leftExX = -carW * 0.32;
         const rightExX = carW * 0.32;
@@ -4246,37 +4457,44 @@
         ctx.arc(rightExX, exY, 5, 0, Math.PI * 2);
         ctx.fill();
 
+        // Multi-Stage Animated Boost Exhaust
         if (p.boostActive) {
-          const flameLen = 45 + Math.random() * 35;
+          const flameLen = 55 + Math.random() * 40;
           ctx.save();
           ctx.shadowColor = '#00f0ff';
-          ctx.shadowBlur = 20;
+          ctx.shadowBlur = 24;
 
-          const fGradL = ctx.createLinearGradient(leftExX, exY, leftExX, exY + flameLen);
-          fGradL.addColorStop(0, '#ffffff');
-          fGradL.addColorStop(0.3, '#00f0ff');
-          fGradL.addColorStop(0.7, '#3b82f6');
-          fGradL.addColorStop(1, 'rgba(59, 130, 246, 0)');
-          ctx.fillStyle = fGradL;
-          ctx.beginPath();
-          ctx.moveTo(leftExX - 6, exY + 4);
-          ctx.lineTo(leftExX + 6, exY + 4);
-          ctx.lineTo(leftExX, exY + flameLen);
-          ctx.closePath();
-          ctx.fill();
+          const renderJet = (exX) => {
+            // Stage 1: Outer turbulent flame envelope
+            const fGrad = ctx.createLinearGradient(exX, exY, exX, exY + flameLen);
+            fGrad.addColorStop(0, '#ffffff');
+            fGrad.addColorStop(0.25, '#00f0ff');
+            fGrad.addColorStop(0.70, '#3b82f6');
+            fGrad.addColorStop(1, 'rgba(59, 130, 246, 0)');
+            ctx.fillStyle = fGrad;
+            ctx.beginPath();
+            ctx.moveTo(exX - 7, exY + 4);
+            ctx.lineTo(exX + 7, exY + 4);
+            ctx.lineTo(exX, exY + flameLen);
+            ctx.closePath();
+            ctx.fill();
 
-          const fGradR = ctx.createLinearGradient(rightExX, exY, rightExX, exY + flameLen);
-          fGradR.addColorStop(0, '#ffffff');
-          fGradR.addColorStop(0.3, '#00f0ff');
-          fGradR.addColorStop(0.7, '#3b82f6');
-          fGradR.addColorStop(1, 'rgba(59, 130, 246, 0)');
-          ctx.fillStyle = fGradR;
-          ctx.beginPath();
-          ctx.moveTo(rightExX - 6, exY + 4);
-          ctx.lineTo(rightExX + 6, exY + 4);
-          ctx.lineTo(rightExX, exY + flameLen);
-          ctx.closePath();
-          ctx.fill();
+            // Stage 2: Supersonic Shock Diamond Packets
+            for (let d = 1; d <= 3; d++) {
+              const dY = exY + d * 14;
+              ctx.fillStyle = '#ffffff';
+              ctx.beginPath();
+              ctx.moveTo(exX, dY - 4);
+              ctx.lineTo(exX + 3.5, dY);
+              ctx.lineTo(exX, dY + 4);
+              ctx.lineTo(exX - 3.5, dY);
+              ctx.closePath();
+              ctx.fill();
+            }
+          };
+
+          renderJet(leftExX);
+          renderJet(rightExX);
 
           ctx.restore();
         }
@@ -4547,6 +4765,15 @@
           if (pad.active) {
             ctx.shadowColor = '#00f0ff';
             ctx.shadowBlur = 12;
+
+            // Animated pulsing energy ripple expanding outwards
+            const pulseR = (performance.now() * 0.035) % 24;
+            const pulseAlpha = (1 - pulseR / 24) * 0.65;
+            ctx.strokeStyle = `rgba(0, 240, 255, ${pulseAlpha})`;
+            ctx.lineWidth = 1.8;
+            ctx.beginPath();
+            ctx.roundRect(-h / 2 - pulseR, -w / 2 - pulseR * 0.5, h + pulseR * 2, w + pulseR, 6);
+            ctx.stroke();
 
             // Dark base plate
             ctx.fillStyle = 'rgba(10, 20, 32, 0.9)';
